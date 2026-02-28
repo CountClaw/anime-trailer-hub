@@ -31,6 +31,46 @@ const ZH_ALIAS = {
   新世纪福音战士: "Neon Genesis Evangelion",
 };
 
+// 常见英文标题的中文显示（持续可扩充）
+const TITLE_ZH = {
+  Naruto: "火影忍者",
+  "One Piece": "海贼王",
+  Bleach: "死神",
+  "Attack on Titan": "进击的巨人",
+  "Shingeki no Kyojin": "进击的巨人",
+  "Kimetsu no Yaiba": "鬼灭之刃",
+  "Jujutsu Kaisen": "咒术回战",
+  "Spy x Family": "间谍过家家",
+  "Chainsaw Man": "链锯人",
+  "Dragon Ball": "龙珠",
+  "Detective Conan": "名侦探柯南",
+  "Neon Genesis Evangelion": "新世纪福音战士",
+  "Bocchi the Rock": "孤独摇滚",
+  "Sousou no Frieren": "葬送的芙莉莲",
+  "Kusuriya no Hitorigoto": "药屋少女的呢喃",
+  "Oshi no Ko": "【我推的孩子】",
+};
+
+const TYPE_ZH = {
+  TV: "TV",
+  Movie: "剧场版",
+  OVA: "OVA",
+  ONA: "ONA",
+  Special: "特别篇",
+  Music: "音乐",
+  CM: "广告",
+  PV: "宣传片",
+  TVSpecial: "电视特别篇",
+};
+
+const STREAM_NAME_ZH = {
+  Crunchyroll: "Crunchyroll",
+  Netflix: "Netflix",
+  Hulu: "Hulu",
+  bilibili: "哔哩哔哩",
+  Bahamut: "巴哈姆特动画疯",
+};
+
 function setStatus(msg) {
   statusEl.textContent = msg;
 }
@@ -43,19 +83,48 @@ function truncate(s = "", n = 120) {
   return s.length > n ? `${s.slice(0, n)}...` : s;
 }
 
+function isChineseText(s = "") {
+  return /[\u3400-\u9fff]/.test(s);
+}
+
 function isChineseQuery(q = "") {
   return /[\u3400-\u9fff]/.test(q);
+}
+
+function normalizeTitleKey(s = "") {
+  return safeText(s).toLowerCase();
+}
+
+function localizeType(type = "") {
+  return TYPE_ZH[type] || type || "未知类型";
 }
 
 function animeMeta(a) {
   const year = a.year || a.aired?.prop?.from?.year || "?";
   const score = a.score ?? "-";
-  const type = a.type || "未知类型";
+  const type = localizeType(a.type || "");
   return `${type} · ${year} · ⭐ ${score}`;
 }
 
+function zhTitleFromDict(a) {
+  const candidates = [a.title, a.title_english, a.title_japanese].filter(Boolean);
+  for (const c of candidates) {
+    const key = normalizeTitleKey(c);
+    for (const k of Object.keys(TITLE_ZH)) {
+      if (key.includes(k.toLowerCase())) return TITLE_ZH[k];
+    }
+  }
+  return "";
+}
+
 function displayTitle(a) {
-  return safeText(a.title_chinese || a.title_english || a.title || "未知动漫");
+  return safeText(a.title_chinese || zhTitleFromDict(a) || a.title_english || a.title || "未知动漫");
+}
+
+function preferChineseSynopsis(a) {
+  const synopsis = safeText(a.synopsis || "");
+  if (synopsis && isChineseText(synopsis)) return truncate(synopsis, 120);
+  return "暂无中文简介，可点「MAL 条目」查看详情。";
 }
 
 function trailerEmbedUrl(a) {
@@ -68,11 +137,19 @@ function streamingLinks(a) {
   return Array.isArray(a?.streaming) ? a.streaming.filter((x) => x?.url) : [];
 }
 
+function localizeStreamName(name = "") {
+  const n = safeText(name);
+  for (const key of Object.keys(STREAM_NAME_ZH)) {
+    if (n.toLowerCase().includes(key.toLowerCase())) return STREAM_NAME_ZH[key];
+  }
+  return n || "播放源";
+}
+
 function makeStreamLinksHtml(links) {
   if (!links.length) return "";
   return links
     .slice(0, 4)
-    .map((x) => `<a class="stream-link" href="${x.url}" target="_blank" rel="noreferrer">${safeText(x.name || "播放源")}</a>`)
+    .map((x) => `<a class="stream-link" href="${x.url}" target="_blank" rel="noreferrer">${localizeStreamName(x.name || "播放源")}</a>`)
     .join("");
 }
 
@@ -128,7 +205,7 @@ function renderItems(items) {
     img.alt = displayTitle(a);
     title.textContent = displayTitle(a);
     meta.textContent = animeMeta(a);
-    desc.textContent = truncate(safeText(a.synopsis || "暂无简介"), 120);
+    desc.textContent = preferChineseSynopsis(a);
     detail.href = a.url;
     detail.textContent = "MAL 条目";
 
@@ -176,14 +253,14 @@ async function loadTop() {
 
   const items = json.data || [];
   renderItems(items);
-  setStatus(`已加载 ${items.length} 条（中文展示）`);
+  setStatus(`已加载 ${items.length} 条（中文优先显示）`);
 }
 
 async function searchAnime(q) {
   const sfw = $("sfw").checked;
   setStatus(`搜索中：${q}`);
 
-  let primary = await fetchAnimeByQuery(q, sfw, 24);
+  const primary = await fetchAnimeByQuery(q, sfw, 24);
   let merged = primary;
 
   // 中文关键词时，自动补一次英文别名检索，提高命中率
@@ -191,7 +268,7 @@ async function searchAnime(q) {
   if (alias && alias.toLowerCase() !== q.toLowerCase()) {
     const fallback = await fetchAnimeByQuery(alias, sfw, 24);
     merged = dedupeByMalId([...primary, ...fallback]);
-    setStatus(`搜索完成：${merged.length} 条（已启用中文别名：${alias}）`);
+    setStatus(`搜索完成：${merged.length} 条（已启用中文联想）`);
   } else {
     setStatus(`搜索完成：${merged.length} 条`);
   }
