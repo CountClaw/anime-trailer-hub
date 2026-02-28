@@ -5,6 +5,32 @@ const listEl = $("list");
 const tpl = $("cardTpl");
 const statusEl = $("status");
 
+// 中文检索别名（常见动漫）
+const ZH_ALIAS = {
+  鬼灭: "Kimetsu no Yaiba",
+  鬼灭之刃: "Kimetsu no Yaiba",
+  咒术回战: "Jujutsu Kaisen",
+  进击的巨人: "Shingeki no Kyojin",
+  巨人: "Attack on Titan",
+  火影: "Naruto",
+  火影忍者: "Naruto",
+  海贼王: "One Piece",
+  航海王: "One Piece",
+  死神: "Bleach",
+  龙珠: "Dragon Ball",
+  名侦探柯南: "Detective Conan",
+  柯南: "Detective Conan",
+  链锯人: "Chainsaw Man",
+  间谍过家家: "Spy x Family",
+  孤独摇滚: "Bocchi the Rock",
+  芙莉莲: "Sousou no Frieren",
+  葬送的芙莉莲: "Sousou no Frieren",
+  药屋少女: "Kusuriya no Hitorigoto",
+  我推的孩子: "Oshi no Ko",
+  eva: "Neon Genesis Evangelion",
+  新世纪福音战士: "Neon Genesis Evangelion",
+};
+
 function setStatus(msg) {
   statusEl.textContent = msg;
 }
@@ -17,11 +43,19 @@ function truncate(s = "", n = 120) {
   return s.length > n ? `${s.slice(0, n)}...` : s;
 }
 
+function isChineseQuery(q = "") {
+  return /[\u3400-\u9fff]/.test(q);
+}
+
 function animeMeta(a) {
   const year = a.year || a.aired?.prop?.from?.year || "?";
   const score = a.score ?? "-";
-  const type = a.type || "Unknown";
+  const type = a.type || "未知类型";
   return `${type} · ${year} · ⭐ ${score}`;
+}
+
+function displayTitle(a) {
+  return safeText(a.title_chinese || a.title_english || a.title || "未知动漫");
 }
 
 function trailerEmbedUrl(a) {
@@ -42,11 +76,40 @@ function makeStreamLinksHtml(links) {
     .join("");
 }
 
+function dedupeByMalId(items) {
+  const seen = new Set();
+  const out = [];
+  for (const it of items) {
+    const id = it?.mal_id;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(it);
+  }
+  return out;
+}
+
+async function fetchAnimeByQuery(q, sfw = true, limit = 24) {
+  const url = `${API}/anime?q=${encodeURIComponent(q)}&limit=${limit}&order_by=score&sort=desc${sfw ? "&sfw=true" : ""}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`请求失败 ${res.status}`);
+  const json = await res.json();
+  return json.data || [];
+}
+
+function aliasFromChinese(q) {
+  if (!isChineseQuery(q)) return "";
+
+  if (ZH_ALIAS[q]) return ZH_ALIAS[q];
+
+  const hit = Object.keys(ZH_ALIAS).find((k) => q.includes(k));
+  return hit ? ZH_ALIAS[hit] : "";
+}
+
 function renderItems(items) {
   listEl.innerHTML = "";
 
   if (!items.length) {
-    listEl.innerHTML = '<div class="card" style="padding:14px;">没找到结果，换个关键词试试（例如英文名：Naruto / Attack on Titan）。</div>';
+    listEl.innerHTML = '<div class="card" style="padding:14px;">没找到结果。可试试：火影、海贼王、进击的巨人、鬼灭之刃。</div>';
     return;
   }
 
@@ -62,8 +125,8 @@ function renderItems(items) {
     const iframe = node.querySelector(".player");
 
     img.src = a.images?.webp?.large_image_url || a.images?.jpg?.large_image_url || "";
-    img.alt = safeText(a.title || "anime");
-    title.textContent = safeText(a.title || a.title_english || "Unknown");
+    img.alt = displayTitle(a);
+    title.textContent = displayTitle(a);
     meta.textContent = animeMeta(a);
     desc.textContent = truncate(safeText(a.synopsis || "暂无简介"), 120);
     detail.href = a.url;
@@ -113,20 +176,27 @@ async function loadTop() {
 
   const items = json.data || [];
   renderItems(items);
-  setStatus(`已加载 ${items.length} 条（含预告/外链信息）`);
+  setStatus(`已加载 ${items.length} 条（中文展示）`);
 }
 
 async function searchAnime(q) {
   const sfw = $("sfw").checked;
   setStatus(`搜索中：${q}`);
-  const url = `${API}/anime?q=${encodeURIComponent(q)}&limit=24&order_by=score&sort=desc${sfw ? "&sfw=true" : ""}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`请求失败 ${res.status}`);
-  const json = await res.json();
 
-  const items = json.data || [];
-  renderItems(items);
-  setStatus(`搜索完成：${items.length} 条`);
+  let primary = await fetchAnimeByQuery(q, sfw, 24);
+  let merged = primary;
+
+  // 中文关键词时，自动补一次英文别名检索，提高命中率
+  const alias = aliasFromChinese(q);
+  if (alias && alias.toLowerCase() !== q.toLowerCase()) {
+    const fallback = await fetchAnimeByQuery(alias, sfw, 24);
+    merged = dedupeByMalId([...primary, ...fallback]);
+    setStatus(`搜索完成：${merged.length} 条（已启用中文别名：${alias}）`);
+  } else {
+    setStatus(`搜索完成：${merged.length} 条`);
+  }
+
+  renderItems(merged);
 }
 
 $("searchForm").addEventListener("submit", async (e) => {
