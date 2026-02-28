@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anime Trailer Hub · 动漫预告片站</title>
+    <meta name="description" content="基于公开动漫元数据与官方预告片的在线播放站（Jikan + YouTube）" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <h1>🎬 Anime Trailer Hub</h1>
+      <p>只聚合公开元数据与官方预告片，不提供盗版正片源。</p>
+    </header>
+
+    <main class="container">
+      <section class="toolbar card">
+        <form id="searchForm">
+          <input id="keyword" placeholder="搜索动漫名称（例：鬼灭、进击的巨人）" />
+          <button type="submit">搜索</button>
+        </form>
+        <div class="row">
+          <button class="ghost" id="loadTopBtn">今日热门</button>
+          <label class="switch"><input id="sfw" type="checkbox" checked /> 仅 SFW</label>
+        </div>
+        <small id="status">准备就绪</small>
+      </section>
+
+      <section id="list" class="grid"></section>
+    </main>
+
+    <template id="cardTpl">
+      <article class="card anime-card">
+        <img class="cover" alt="cover" loading="lazy" />
+        <div class="content">
+          <h3 class="title"></h3>
+          <p class="meta"></p>
+          <p class="desc"></p>
+          <div class="actions">
+            <a class="btn" target="_blank" rel="noreferrer">查看条目</a>
+            <button class="ghost playBtn">在线播放预告</button>
+          </div>
+          <div class="player-wrap hidden">
+            <iframe class="player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <footer>
+      Data from Jikan API (MyAnimeList metadata) · Trailer embeds from YouTube.
+    </footer>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
